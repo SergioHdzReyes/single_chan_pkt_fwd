@@ -9,28 +9,20 @@
  *
  *******************************************************************************/
 
-#include <string>
 #include <stdio.h>
-#include <sys/types.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <string.h>
-#include <iostream>
-#include <cstdlib>
 #include <sys/time.h>
-#include <cstring>
-
+#include <stdlib.h>
 #include <sys/ioctl.h>
 #include <net/if.h>
 
-using namespace std;
-
 #include "base64.h"
-
 #include <wiringPi.h>
 #include <wiringPiSPI.h>
+#include <time.h>
 
-typedef bool boolean;
 typedef unsigned char byte;
 
 static const int CHANNEL = 0;
@@ -40,7 +32,7 @@ byte currentMode = 0x81;
 char message[256];
 char b64[256];
 
-bool sx1272 = true;
+int sx1272 = 1;
 
 byte receivedbytes;
 
@@ -68,7 +60,7 @@ int dio0  = 7;
 int RST   = 0;
 
 // Set spreading factor (SF7 - SF12)
-sf_t sf = SF7;
+enum sf_t sf = SF7;
 
 // Set center frequency
 uint32_t  freq = 868100000; // in Mhz! (868.1)
@@ -204,7 +196,7 @@ void writeRegister(byte addr, byte value)
 }
 
 
-boolean receivePkt(char *payload)
+int receivePkt(char *payload)
 {
 
     // clear rxDone
@@ -219,7 +211,7 @@ boolean receivePkt(char *payload)
     {
         printf("CRC error\n");
         writeRegister(REG_IRQ_FLAGS, 0x20);
-        return false;
+        return 0;
     } else {
 
         cp_nb_rx_ok++;
@@ -235,12 +227,11 @@ boolean receivePkt(char *payload)
             payload[i] = (char)readRegister(REG_FIFO);
         }
     }
-    return true;
+    return 1;
 }
 
 void SetupLoRa()
 {
-    
     digitalWrite(RST, HIGH);
     delay(100);
     digitalWrite(RST, LOW);
@@ -251,7 +242,7 @@ void SetupLoRa()
     if (version == 0x22) {
         // sx1272
         printf("SX1272 detected, starting.\n");
-        sx1272 = true;
+        sx1272 = 1;
     } else {
         // sx1276?
         digitalWrite(RST, LOW);
@@ -262,7 +253,7 @@ void SetupLoRa()
         if (version == 0x12) {
             // sx1276
             printf("SX1276 detected, starting.\n");
-            sx1272 = false;
+            sx1272 = 0;
         } else {
             printf("Unrecognized transceiver.\n");
             //printf("Version: 0x%x\n",version);

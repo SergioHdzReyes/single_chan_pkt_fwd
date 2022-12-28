@@ -155,8 +155,13 @@ static char description[64] = "";                        /* used for free form d
 #define TX_BUFF_SIZE  2048
 #define STATUS_SIZE	  1024
 
-void die(const char *s)
-{
+// Values incrusted on message
+unsigned char dev_destiny;
+unsigned char dev_origin;
+unsigned int msg_id;
+unsigned int msg_lenght;
+
+void die(const char *s) {
     perror(s);
     exit(1);
 }
@@ -305,56 +310,9 @@ void sendudp(char *msg, int length) {
     }
 #endif
 
-#ifdef SERVER2
-    inet_aton(SERVER2 , &si_other.sin_addr);
-    if (sendto(s, (char *)msg, length , 0 , (struct sockaddr *) &si_other, slen)==-1)
-    {
-        die("sendto()");
+        curl_easy_cleanup(curl);
     }
-#endif
-}
-
-void sendstat() {
-
-    static char status_report[STATUS_SIZE]; /* status report as a JSON object */
-    char stat_timestamp[24];
-    time_t t;
-
-    int stat_index=0;
-
-    /* pre-fill the data buffer with fixed fields */
-    status_report[0] = PROTOCOL_VERSION;
-    status_report[3] = PKT_PUSH_DATA;
-
-    status_report[4] = (unsigned char)ifr.ifr_hwaddr.sa_data[0];
-    status_report[5] = (unsigned char)ifr.ifr_hwaddr.sa_data[1];
-    status_report[6] = (unsigned char)ifr.ifr_hwaddr.sa_data[2];
-    status_report[7] = 0xFF;
-    status_report[8] = 0xFF;
-    status_report[9] = (unsigned char)ifr.ifr_hwaddr.sa_data[3];
-    status_report[10] = (unsigned char)ifr.ifr_hwaddr.sa_data[4];
-    status_report[11] = (unsigned char)ifr.ifr_hwaddr.sa_data[5];
-
-    /* start composing datagram with the header */
-    uint8_t token_h = (uint8_t)rand(); /* random token */
-    uint8_t token_l = (uint8_t)rand(); /* random token */
-    status_report[1] = token_h;
-    status_report[2] = token_l;
-    stat_index = 12; /* 12-byte header */
-
-    /* get timestamp for statistics */
-    t = time(NULL);
-    strftime(stat_timestamp, sizeof stat_timestamp, "%F %T %Z", gmtime(&t));
-
-    int j = snprintf((char *)(status_report + stat_index), STATUS_SIZE-stat_index, "{\"stat\":{\"time\":\"%s\",\"lati\":%.5f,\"long\":%.5f,\"alti\":%i,\"rxnb\":%u,\"rxok\":%u,\"rxfw\":%u,\"ackr\":%.1f,\"dwnb\":%u,\"txnb\":%u,\"pfrm\":\"%s\",\"mail\":\"%s\",\"desc\":\"%s\"}}", stat_timestamp, lat, lon, (int)alt, cp_nb_rx_rcv, cp_nb_rx_ok, cp_up_pkt_fwd, (float)0, 0, 0,platform,email,description);
-    stat_index += j;
-    status_report[stat_index] = 0; /* add string terminator, for safety */
-
-    printf("stat update: %s\n", (char *)(status_report+12)); /* DEBUG: display JSON stat */
-
-    //send the update
-    sendudp(status_report, stat_index);
-
+    curl_global_cleanup();
 }
 
 void receivepacket() {
@@ -363,6 +321,24 @@ void receivepacket() {
 
     if(digitalRead(dio0) == 1) {
         if(receivePkt(message)) {
+            printf("MSG: %s\n", message);
+
+            dev_destiny = message[0];
+            dev_origin = message[1];
+            msg_id = (unsigned int) message[2];
+            msg_lenght = (unsigned int) message[3];
+
+            if (dev_destiny != 0xEE)
+                return;
+
+            /*digitalWrite (led, HIGH);
+            delay(200);
+            digitalWrite (led,  LOW);
+            delay(200);*/
+
+            printf("\nMSG_ID: %d, MSG_LENGHT: %d\n", msg_id, msg_lenght);
+            strcpy(message, message + 4);
+
             byte value = readRegister(REG_PKT_SNR_VALUE);
             if( value & 0x80 ) {    // The SNR sign bit is 1
                 // Invert and divide by 4
@@ -540,7 +516,6 @@ int main () {
         uint32_t nowseconds = (uint32_t)(nowtime.tv_sec);
         if (nowseconds - lasttime >= 30) {
             lasttime = nowseconds;
-            sendstat();
             cp_nb_rx_rcv = 0;
             cp_nb_rx_ok = 0;
             cp_up_pkt_fwd = 0;

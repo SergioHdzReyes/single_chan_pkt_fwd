@@ -18,7 +18,7 @@
 #include <sys/ioctl.h>
 #include <net/if.h>
 
-#include "base64.h"
+//#include "base64.h"
 #include <wiringPi.h>
 #include <wiringPiSPI.h>
 #include <time.h>
@@ -401,9 +401,6 @@ void receivepacket() {
             printf("\n");
 
             int j;
-            j = bin_to_b64((uint8_t *)message, receivedbytes, (char *)(b64), 341);
-            //fwrite(b64, sizeof(char), j, stdout);
-
             char buff_up[TX_BUFF_SIZE]; /* buffer to compose the upstream packet */
             int buff_index=0;
 
@@ -493,12 +490,6 @@ void receivepacket() {
             buff_index += j;
             j = snprintf((char *)(buff_up + buff_index), TX_BUFF_SIZE-buff_index, ",\"rssi\":%d,\"size\":%u", readRegister(0x1A)-rssicorr, receivedbytes);
             buff_index += j;
-            memcpy((void *)(buff_up + buff_index), (void *)",\"data\":\"", 9);
-            buff_index += 9;
-            j = bin_to_b64((uint8_t *)message, receivedbytes, (char *)(buff_up + buff_index), 341);
-            buff_index += j;
-            buff_up[buff_index] = '"';
-            ++buff_index;
 
             /* End of packet serialization */
             buff_up[buff_index] = '}';

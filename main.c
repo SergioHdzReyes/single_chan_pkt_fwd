@@ -22,6 +22,8 @@
 #include <wiringPi.h>
 #include <wiringPiSPI.h>
 #include <time.h>
+#include <curl/curl.h>
+#include <unistd.h>
 
 typedef unsigned char byte;
 
@@ -299,16 +301,21 @@ void SetupLoRa() {
 
 }
 
-void sendudp(char *msg, int length) {
+void sendData(char *msg, long length) {
+    CURL *curl;
+    CURLcode res;
+    char url[100];
+    sprintf(url, "http://%s:8000/sensors_save_data", SERVER1);
 
-//send the update
-#ifdef SERVER1
-    inet_aton(SERVER1 , &si_other.sin_addr);
-    if (sendto(s, (char *)msg, length, 0 , (struct sockaddr *) &si_other, slen)==-1)
-    {
-        die("sendto()");
-    }
-#endif
+    curl = curl_easy_init();
+    if(curl) {
+        curl_easy_setopt(curl, CURLOPT_URL, url);
+        // curl_easy_setopt(curl, CURLOPT_POSTFIELDS, "node=nodeA&sensor_temp=23.6&sensor_humidity=23.8");
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, msg);
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, length);
+        res = curl_easy_perform(curl);
+        if(res != CURLE_OK)
+            fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
 
         curl_easy_cleanup(curl);
     }
@@ -365,107 +372,18 @@ void receivepacket() {
             char buff_up[TX_BUFF_SIZE]; /* buffer to compose the upstream packet */
             int buff_index=0;
 
-            /* gateway <-> MAC protocol variables */
-            //static uint32_t net_mac_h; /* Most Significant Nibble, network order */
-            //static uint32_t net_mac_l; /* Least Significant Nibble, network order */
-
-            /* pre-fill the data buffer with fixed fields */
-            buff_up[0] = PROTOCOL_VERSION;
-            buff_up[3] = PKT_PUSH_DATA;
-
-            /* process some of the configuration variables */
-            //net_mac_h = htonl((uint32_t)(0xFFFFFFFF & (lgwm>>32)));
-            //net_mac_l = htonl((uint32_t)(0xFFFFFFFF &  lgwm  ));
-            //*(uint32_t *)(buff_up + 4) = net_mac_h;
-            //*(uint32_t *)(buff_up + 8) = net_mac_l;
-
-            buff_up[4] = (unsigned char)ifr.ifr_hwaddr.sa_data[0];
-            buff_up[5] = (unsigned char)ifr.ifr_hwaddr.sa_data[1];
-            buff_up[6] = (unsigned char)ifr.ifr_hwaddr.sa_data[2];
-            buff_up[7] = 0xFF;
-            buff_up[8] = 0xFF;
-            buff_up[9] = (unsigned char)ifr.ifr_hwaddr.sa_data[3];
-            buff_up[10] = (unsigned char)ifr.ifr_hwaddr.sa_data[4];
-            buff_up[11] = (unsigned char)ifr.ifr_hwaddr.sa_data[5];
-
-            /* start composing datagram with the header */
-            uint8_t token_h = (uint8_t)rand(); /* random token */
-            uint8_t token_l = (uint8_t)rand(); /* random token */
-            buff_up[1] = token_h;
-            buff_up[2] = token_l;
-            buff_index = 12; /* 12-byte header */
-
-            // TODO: tmst can jump is time is (re)set, not good.
-            struct timeval now;
-            gettimeofday(&now, NULL);
-            uint32_t tmst = (uint32_t)(now.tv_sec*1000000 + now.tv_usec);
-
-            /* start of JSON structure */
-            memcpy((void *)(buff_up + buff_index), (void *)"{\"rxpk\":[", 9);
-            buff_index += 9;
-            buff_up[buff_index] = '{';
-            ++buff_index;
-            j = snprintf((char *)(buff_up + buff_index), TX_BUFF_SIZE-buff_index, "\"tmst\":%u", tmst);
+            j = snprintf((char *)(buff_up + buff_index), TX_BUFF_SIZE-buff_index, "%s", message);
             buff_index += j;
-            j = snprintf((char *)(buff_up + buff_index), TX_BUFF_SIZE-buff_index, ",\"chan\":%1u,\"rfch\":%1u,\"freq\":%.6lf", 0, 0, (double)freq/1000000);
-            buff_index += j;
-            memcpy((void *)(buff_up + buff_index), (void *)",\"stat\":1", 9);
-            buff_index += 9;
-            memcpy((void *)(buff_up + buff_index), (void *)",\"modu\":\"LORA\"", 14);
-            buff_index += 14;
-            /* Lora datarate & bandwidth, 16-19 useful chars */
-            switch (sf) {
-            case SF7:
-                memcpy((void *)(buff_up + buff_index), (void *)",\"datr\":\"SF7", 12);
-                buff_index += 12;
-                break;
-            case SF8:
-                memcpy((void *)(buff_up + buff_index), (void *)",\"datr\":\"SF8", 12);
-                buff_index += 12;
-                break;
-            case SF9:
-                memcpy((void *)(buff_up + buff_index), (void *)",\"datr\":\"SF9", 12);
-                buff_index += 12;
-                break;
-            case SF10:
-                memcpy((void *)(buff_up + buff_index), (void *)",\"datr\":\"SF10", 13);
-                buff_index += 13;
-                break;
-            case SF11:
-                memcpy((void *)(buff_up + buff_index), (void *)",\"datr\":\"SF11", 13);
-                buff_index += 13;
-                break;
-            case SF12:
-                memcpy((void *)(buff_up + buff_index), (void *)",\"datr\":\"SF12", 13);
-                buff_index += 13;
-                break;
-            default:
-                memcpy((void *)(buff_up + buff_index), (void *)",\"datr\":\"SF?", 12);
-                buff_index += 12;
+
+            printf("rxpk update: %2s\n", message); /* DEBUG: display JSON payload */
+            /*for (int i = 0; i < strlen(message);i++) {
+                printf("%c ", message[i]);
             }
-            memcpy((void *)(buff_up + buff_index), (void *)"BW125\"", 6);
-            buff_index += 6;
-            memcpy((void *)(buff_up + buff_index), (void *)",\"codr\":\"4/5\"", 13);
-            buff_index += 13;
-            j = snprintf((char *)(buff_up + buff_index), TX_BUFF_SIZE-buff_index, ",\"lsnr\":%li", SNR);
-            buff_index += j;
-            j = snprintf((char *)(buff_up + buff_index), TX_BUFF_SIZE-buff_index, ",\"rssi\":%d,\"size\":%u", readRegister(0x1A)-rssicorr, receivedbytes);
-            buff_index += j;
-
-            /* End of packet serialization */
-            buff_up[buff_index] = '}';
-            ++buff_index;
-            buff_up[buff_index] = ']';
-            ++buff_index;
-            /* end of JSON datagram payload */
-            buff_up[buff_index] = '}';
-            ++buff_index;
-            buff_up[buff_index] = 0; /* add string terminator, for safety */
-
-            printf("rxpk update: %s\n", (char *)(buff_up + 12)); /* DEBUG: display JSON payload */
+            printf("\n");*/
 
             //send the messages
-            sendudp(buff_up, buff_index);
+            sendData(message, (long) strlen(message));
+            printf("\n");
 
             fflush(stdout);
 

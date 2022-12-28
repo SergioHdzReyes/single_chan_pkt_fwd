@@ -3,7 +3,7 @@
 
 CC=gcc
 CFLAGS=-c -Wall
-LIBS=-lwiringPi
+LIBS=-lwiringPi -lcurl
 
 all: single_chan_pkt_fwd
 

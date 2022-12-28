@@ -58,12 +58,13 @@ enum sf_t { SF7=7, SF8, SF9, SF10, SF11, SF12 };
 int ssPin = 6;
 int dio0  = 7;
 int RST   = 0;
+int led = 16;
 
 // Set spreading factor (SF7 - SF12)
 enum sf_t sf = SF7;
 
 // Set center frequency
-uint32_t  freq = 868100000; // in Mhz! (868.1)
+uint32_t  freq = 915000000; // in Mhz! (868.1)
 
 // Set location
 float lat=0.0;
@@ -77,7 +78,7 @@ static char description[64] = "";                        /* used for free form d
 
 // define servers
 // TODO: use host names and dns
-#define SERVER1 "54.72.145.119"    // The Things Network: croft.thethings.girovito.nl
+#define SERVER1 "146.190.112.198"    // The Things Network: croft.thethings.girovito.nl
 //#define SERVER2 "192.168.1.10"      // local
 #define PORT 1700                   // The port on which to send data
 
@@ -160,18 +161,15 @@ void die(const char *s)
     exit(1);
 }
 
-void selectreceiver()
-{
+void selectreceiver() {
     digitalWrite(ssPin, LOW);
 }
 
-void unselectreceiver()
-{
+void unselectreceiver() {
     digitalWrite(ssPin, HIGH);
 }
 
-byte readRegister(byte addr)
-{
+byte readRegister(byte addr) {
     unsigned char spibuf[2];
 
     selectreceiver();
@@ -183,8 +181,7 @@ byte readRegister(byte addr)
     return spibuf[1];
 }
 
-void writeRegister(byte addr, byte value)
-{
+void writeRegister(byte addr, byte value) {
     unsigned char spibuf[2];
 
     spibuf[0] = addr | 0x80;
@@ -196,24 +193,19 @@ void writeRegister(byte addr, byte value)
 }
 
 
-int receivePkt(char *payload)
-{
-
+int receivePkt(char *payload) {
     // clear rxDone
     writeRegister(REG_IRQ_FLAGS, 0x40);
 
     int irqflags = readRegister(REG_IRQ_FLAGS);
-
     cp_nb_rx_rcv++;
 
     //  payload crc: 0x20
-    if((irqflags & 0x20) == 0x20)
-    {
+    if((irqflags & 0x20) == 0x20) {
         printf("CRC error\n");
         writeRegister(REG_IRQ_FLAGS, 0x20);
         return 0;
     } else {
-
         cp_nb_rx_ok++;
 
         byte currentAddr = readRegister(REG_FIFO_RX_CURRENT_ADDR);
@@ -222,16 +214,14 @@ int receivePkt(char *payload)
 
         writeRegister(REG_FIFO_ADDR_PTR, currentAddr);
 
-        for(int i = 0; i < receivedCount; i++)
-        {
+        for(int i = 0; i < receivedCount; i++) {
             payload[i] = (char)readRegister(REG_FIFO);
         }
     }
     return 1;
 }
 
-void SetupLoRa()
-{
+void SetupLoRa() {
     digitalWrite(RST, HIGH);
     delay(100);
     digitalWrite(RST, LOW);
@@ -368,22 +358,17 @@ void sendstat() {
 }
 
 void receivepacket() {
-
     long int SNR;
     int rssicorr;
 
-    if(digitalRead(dio0) == 1)
-    {
+    if(digitalRead(dio0) == 1) {
         if(receivePkt(message)) {
             byte value = readRegister(REG_PKT_SNR_VALUE);
-            if( value & 0x80 ) // The SNR sign bit is 1
-            {
+            if( value & 0x80 ) {    // The SNR sign bit is 1
                 // Invert and divide by 4
                 value = ( ( ~value + 1 ) & 0xFF ) >> 2;
                 SNR = -value;
-            }
-            else
-            {
+            } else {
                 // Divide by 4
                 SNR = ( value & 0xFF ) >> 2;
             }
@@ -514,7 +499,6 @@ void receivepacket() {
 }
 
 int main () {
-
     struct timeval nowtime;
     uint32_t lasttime;
 
@@ -522,15 +506,11 @@ int main () {
     pinMode(ssPin, OUTPUT);
     pinMode(dio0, INPUT);
     pinMode(RST, OUTPUT);
-
-    //int fd = 
+    pinMode(led, OUTPUT);
     wiringPiSPISetup(CHANNEL, 500000);
-    //cout << "Init result: " << fd << endl;
-
     SetupLoRa();
 
-    if ( (s=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
-    {
+    if ( (s=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1) {
         die("socket");
     }
     memset((char *) &si_other, 0, sizeof(si_other));
@@ -554,7 +534,6 @@ int main () {
     printf("------------------\n");
 
     while(1) {
-
         receivepacket();
 
         gettimeofday(&nowtime, NULL);
@@ -570,6 +549,4 @@ int main () {
     }
 
     return (0);
-
 }
-
